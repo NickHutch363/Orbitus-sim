@@ -1,0 +1,120 @@
+using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
+
+/// <summary>
+/// The Mission Control HUD. Shows real orbital telemetry data on screen.
+/// Assign the TextMeshPro fields in the Inspector by wiring up your Canvas elements.
+/// </summary>
+public class MissionControlHUD : MonoBehaviour
+{
+    [Header("Spacecraft Reference")]
+    public SpacecraftController spacecraft;
+
+    [Header("Telemetry Readouts")]
+    public TextMeshProUGUI altitudeText;
+    public TextMeshProUGUI velocityText;
+    public TextMeshProUGUI apoapsisText;
+    public TextMeshProUGUI periapsisText;
+    public TextMeshProUGUI eccentricityText;
+    public TextMeshProUGUI orbitalPeriodText;
+    public TextMeshProUGUI deltaVText;
+    public TextMeshProUGUI engineStatusText;
+    public TextMeshProUGUI timeScaleText;
+
+    [Header("Engine Status Colors")]
+    public Color engineOnColor  = new Color(1f, 0.5f, 0f);   // Orange
+    public Color engineOffColor = new Color(0.4f, 1f, 0.4f); // Green
+
+    [Header("Time Scale Control")]
+    public Slider timeScaleSlider;
+
+    private OrbitalPhysicsEngine physicsEngine;
+
+    void Start()
+    {
+        physicsEngine = FindObjectOfType<OrbitalPhysicsEngine>();
+
+        if (timeScaleSlider != null)
+        {
+            timeScaleSlider.minValue = 1f;
+            timeScaleSlider.maxValue = 10000f;
+            timeScaleSlider.value = physicsEngine.timeScale;
+            timeScaleSlider.onValueChanged.AddListener(OnTimeScaleChanged);
+        }
+    }
+
+    void Update()
+    {
+        if (spacecraft == null || physicsEngine == null) return;
+
+        UpdateTelemetry();
+        HandleKeyboardShortcuts();
+    }
+
+    void UpdateTelemetry()
+    {
+        OrbitalElements orbit = spacecraft.currentOrbit;
+
+        // Altitude
+        if (altitudeText)
+            altitudeText.text = $"ALT\n{spacecraft.currentAltitude:F1} km";
+
+        // Velocity
+        if (velocityText)
+            velocityText.text = $"VELOCITY\n{spacecraft.currentSpeed:F3} km/s";
+
+        // Apoapsis (highest point)
+        if (apoapsisText)
+            apoapsisText.text = $"APOAPSIS\n{orbit.apoapsis * 0.001f:F1} km";
+
+        // Periapsis (lowest point)
+        if (periapsisText)
+            periapsisText.text = $"PERIAPSIS\n{orbit.periapsis * 0.001f:F1} km";
+
+        // Eccentricity (0 = perfect circle, 1 = escape)
+        if (eccentricityText)
+            eccentricityText.text = $"ECC\n{orbit.eccentricity:F4}";
+
+        // Orbital period
+        if (orbitalPeriodText)
+        {
+            float periodMin = orbit.period / 60f;
+            orbitalPeriodText.text = periodMin < 60f
+                ? $"PERIOD\n{periodMin:F1} min"
+                : $"PERIOD\n{periodMin / 60f:F2} hr";
+        }
+
+        // Delta-V remaining
+        if (deltaVText)
+            deltaVText.text = $"Δv REMAINING\n{spacecraft.remainingDeltaV:F0} m/s";
+
+        // Engine status
+        if (engineStatusText)
+        {
+            engineStatusText.text = spacecraft.engineFiring ? "● ENGINE FIRING" : "● COAST";
+            engineStatusText.color = spacecraft.engineFiring ? engineOnColor : engineOffColor;
+        }
+
+        // Time scale
+        if (timeScaleText)
+            timeScaleText.text = $"TIME ×{physicsEngine.timeScale:F0}";
+    }
+
+    void HandleKeyboardShortcuts()
+    {
+        // Time scale controls
+        if (Input.GetKeyDown(KeyCode.Comma))  physicsEngine.timeScale = Mathf.Max(1f, physicsEngine.timeScale / 10f);
+        if (Input.GetKeyDown(KeyCode.Period)) physicsEngine.timeScale = Mathf.Min(10000f, physicsEngine.timeScale * 10f);
+
+        // Pause simulation
+        if (Input.GetKeyDown(KeyCode.P))
+            physicsEngine.simulationRunning = !physicsEngine.simulationRunning;
+    }
+
+    void OnTimeScaleChanged(float value)
+    {
+        if (physicsEngine != null)
+            physicsEngine.timeScale = value;
+    }
+}
