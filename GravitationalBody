@@ -1,0 +1,68 @@
+using UnityEngine;
+
+/// <summary>
+/// Attach this to any object that has gravitational influence (planets, moons, stars).
+/// Also attach to spacecraft to give them mass for attraction calculations.
+/// </summary>
+public class GravitationalBody : MonoBehaviour
+{
+    [Header("Physical Properties")]
+    public float mass = 5.972e24f;          // Default: Earth mass in kg
+    public float radius = 6371f;            // Radius in km (for surface detection)
+    public bool isStationary = true;        // Planets stay fixed; spacecraft move
+
+    [Header("Display")]
+    public string bodyName = "Earth";
+    public Color orbitTrailColor = Color.cyan;
+
+    // Current velocity in km/s (used by the physics engine)
+    [HideInInspector] public Vector3 velocity = Vector3.zero;
+
+    // Reference to the universe manager (auto-assigned at runtime)
+    private OrbitalPhysicsEngine physicsEngine;
+
+    void Start()
+    {
+        physicsEngine = FindObjectOfType<OrbitalPhysicsEngine>();
+        if (physicsEngine != null)
+            physicsEngine.RegisterBody(this);
+    }
+
+    void OnDestroy()
+    {
+        if (physicsEngine != null)
+            physicsEngine.UnregisterBody(this);
+    }
+
+    /// <summary>
+    /// Returns the gravitational acceleration this body exerts on a point in space.
+    /// F = G * M / r^2, returned as a direction vector with magnitude.
+    /// </summary>
+    public Vector3 GetGravitationalAcceleration(Vector3 position)
+    {
+        Vector3 direction = transform.position - position;
+        float distanceSqr = direction.sqrMagnitude;
+
+        if (distanceSqr < 0.001f) return Vector3.zero; // Avoid division by zero
+
+        float magnitude = OrbitalPhysicsEngine.G * mass / distanceSqr;
+        return direction.normalized * magnitude;
+    }
+
+    /// <summary>
+    /// Returns current orbital speed needed for circular orbit at a given altitude above surface.
+    /// v = sqrt(G * M / r)  — this is the rocket equation every SpaceX engineer knows.
+    /// </summary>
+    public float GetCircularOrbitSpeed(float altitudeKm)
+    {
+        float r = (radius + altitudeKm) * 1000f; // Convert to meters
+        return Mathf.Sqrt(OrbitalPhysicsEngine.G * mass / r);
+    }
+
+    void OnDrawGizmos()
+    {
+        // Draw sphere of influence in editor
+        Gizmos.color = new Color(orbitTrailColor.r, orbitTrailColor.g, orbitTrailColor.b, 0.1f);
+        Gizmos.DrawWireSphere(transform.position, radius * 0.01f); // Scaled for scene view
+    }
+}
