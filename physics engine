@@ -1,0 +1,174 @@
+using UnityEngine;
+using System.Collections.Generic;
+
+/// <summary>
+/// The core physics engine. Place this on an empty GameObject called "Universe".
+/// It runs the N-body gravitational simulation every fixed timestep.
+/// Uses the Velocity Verlet integration method — more accurate than Unity's default.
+/// </summary>
+public class OrbitalPhysicsEngine : MonoBehaviour
+{
+    // ─── Universal Constants ──────────────────────────────────────────────────
+    // Gravitational constant. Scaled down for Unity's unit system.
+    // Real value: 6.674e-11 N⋅m²/kg² — we scale our masses and distances to match.
+    public const float G = 6.674e-11f;
+
+    // ─── Simulation Settings ──────────────────────────────────────────────────
+    [Header("Simulation Settings")]
+    [Range(1f, 10000f)]
+    public float timeScale = 1f;            // 1 = real time, 1000 = 1000x faster
+
+    [Range(1, 20)]
+    public int physicsSubsteps = 10;        // More substeps = more accuracy
+
+    public bool simulationRunning = true;
+
+    // ─── Registered Bodies ────────────────────────────────────────────────────
+    private List<GravitationalBody> bodies = new List<GravitationalBody>();
+
+    // ─── Singleton Access ─────────────────────────────────────────────────────
+    public static OrbitalPhysicsEngine Instance { get; private set; }
+
+    void Awake()
+    {
+        if (Instance != null && Instance != this) { Destroy(gameObject); return; }
+        Instance = this;
+    }
+
+    // ─── Body Registration ────────────────────────────────────────────────────
+
+    public void RegisterBody(GravitationalBody body)
+    {
+        if (!bodies.Contains(body))
+            bodies.Add(body);
+    }
+
+    public void UnregisterBody(GravitationalBody body)
+    {
+        bodies.Remove(body);
+    }
+
+    // ─── Physics Update ───────────────────────────────────────────────────────
+
+    void FixedUpdate()
+    {
+        if (!simulationRunning) return;
+
+        float dt = Time.fixedDeltaTime * timeScale / physicsSubsteps;
+
+        // Run multiple substeps per frame for accuracy at high time scales
+        for (int step = 0; step < physicsSubsteps; step++)
+        {
+            StepSimulation(dt);
+        }
+    }
+
+    /// <summary>
+    /// One tick of the N-body simulation.
+    /// Every non-stationary body is pulled by every other body in the scene.
+    /// </summary>
+    void StepSimulation(float dt)
+    {
+        // Gather accelerations from all gravitational sources
+        for (int i = 0; i < bodies.Count; i++)
+        {
+            GravitationalBody body = bodies[i];
+            if (body.isStationary) continue; // Planets don't move
+
+            Vector3 totalAcceleration = Vector3.zero;
+
+            // Sum gravitational pull from every OTHER body
+            for (int j = 0; j < bodies.Count; j++)
+            {
+                if (i == j) continue;
+                totalAcceleration += bodies[j].GetGravitationalAcceleration(body.transform.position);
+            }
+
+            // Velocity Verlet integration:
+            // position += velocity * dt + 0.5 * acceleration * dt²
+            // velocity += acceleration * dt
+            body.transform.position += body.velocity * dt + 0.5f * totalAcceleration * dt * dt;
+            body.velocity += totalAcceleration * dt;
+        }
+    }
+
+    // ─── Utility Methods ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns the dominant gravitational body at a given position
+    /// (the one exerting the most force — the current "sphere of influence").
+    /// </summary>
+    public GravitationalBody GetDominantBody(Vector3 position)
+    {
+        GravitationalBody dominant = null;
+        float maxAcceleration = 0f;
+
+        foreach (var body in bodies)
+        {
+            float accel = body.GetGravitationalAcceleration(position).magnitude;
+            if (accel > maxAcceleration)
+            {
+                maxAcceleration = accel;
+                dominant = body;
+            }
+        }
+        return dominant;
+    }
+
+    /// <summary>
+    /// Calculates the current orbital elements of a spacecraft around a parent body.
+    /// Returns eccentricity, apoapsis, periapsis — the real numbers Mission Control watches.
+    /// </summary>
+    public OrbitalElements CalculateOrbitalElements(GravitationalBody spacecraft, GravitationalBody parent)
+    {
+        Vector3 r = spacecraft.transform.position - parent.transform.position;
+        Vector3 v = spacecraft.velocity;
+        float mu = G * parent.mass;
+
+        // Specific orbital energy
+        float specificEnergy = (v.sqrMagnitude / 2f) - (mu / r.magnitude);
+
+        // Semi-major axis
+        float semiMajorAxis = -mu / (2f * specificEnergy);
+
+        // Eccentricity vector
+        Vector3 eccentricityVector = ((v.sqrMagnitude - mu / r.magnitude) * r - Vector3.Dot(r, v) * v) / mu;
+        float eccentricity = eccentricityVector.magnitude;
+
+        // Apoapsis and periapsis
+        float apoapsis  = semiMajorAxis * (1f + eccentricity);
+        float periapsis = semiMajorAxis * (1f - eccentricity);
+
+        // Orbital period (Kepler's third law: T = 2π√(a³/μ))
+        float period = 2f * Mathf.PI * Mathf.Sqrt(Mathf.Pow(Mathf.Abs(semiMajorAxis), 3f) / mu);
+
+        return new OrbitalElements
+        {
+            semiMajorAxis = semiMajorAxis,
+            eccentricity  = eccentricity,
+            apoapsis      = apoapsis,
+            periapsis     = periapsis,
+            period        = period
+        };
+    }
+
+    // ─── Debug ────────────────────────────────────────────────────────────────
+
+    void OnGUI()
+    {
+        GUI.Label(new Rect(10, 10, 300, 25), $"Time Scale: {timeScale:F0}x | Bodies: {bodies.Count}");
+    }
+}
+
+/// <summary>
+/// Holds the six classical orbital elements — what you'd see on a Mission Control screen.
+/// </summary>
+[System.Serializable]
+public struct OrbitalElements
+{
+    public float semiMajorAxis;   // km — average orbital radius
+    public float eccentricity;    // 0 = circle, 1 = escape trajectory
+    public float apoapsis;        // km — highest point in orbit
+    public float periapsis;       // km — lowest point in orbit
+    public float period;          // seconds — time for one full orbit
+}
