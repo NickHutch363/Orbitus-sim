@@ -1,0 +1,165 @@
+using UnityEngine;
+
+/// <summary>
+/// Attach to your spacecraft prefab. Handles engine burns, fuel, and draws
+/// the glowing orbital trail that makes the simulation beautiful to watch.
+/// </summary>
+[RequireComponent(typeof(GravitationalBody))]
+[RequireComponent(typeof(TrailRenderer))]
+public class SpacecraftController : MonoBehaviour
+{
+    // ─── Engine Properties ────────────────────────────────────────────────────
+    [Header("Engine")]
+    public float thrustForce = 10f;         // Newtons of thrust (scaled)
+    public float specificImpulse = 311f;    // Isp in seconds (Merlin engine = 311s vacuum)
+    public float fuelMass = 1000f;          // kg of fuel remaining
+    public float dryMass = 500f;            // kg of spacecraft without fuel
+
+    [Header("Controls")]
+    public KeyCode thrustForwardKey  = KeyCode.W;
+    public KeyCode thrustBackKey     = KeyCode.S;
+    public KeyCode thrustLeftKey     = KeyCode.A;
+    public KeyCode thrustRightKey    = KeyCode.D;
+    public KeyCode progradeKey       = KeyCode.Space; // Burn in direction of travel
+
+    // ─── Orbital Trail ────────────────────────────────────────────────────────
+    [Header("Trail Visuals")]
+    public Gradient trailColorGradient;
+    public float trailTime = 20f;           // How many seconds of trail to show
+    public float trailWidth = 0.05f;
+
+    // ─── Telemetry (read by the UI) ───────────────────────────────────────────
+    [HideInInspector] public float currentAltitude;
+    [HideInInspector] public float currentSpeed;
+    [HideInInspector] public float remainingDeltaV;
+    [HideInInspector] public bool engineFiring;
+    [HideInInspector] public OrbitalElements currentOrbit;
+
+    // ─── Private References ───────────────────────────────────────────────────
+    private GravitationalBody gravBody;
+    private TrailRenderer trail;
+    private GravitationalBody referenceBody; // The body we're orbiting
+
+    void Awake()
+    {
+        gravBody = GetComponent<GravitationalBody>();
+        gravBody.isStationary = false;
+
+        trail = GetComponent<TrailRenderer>();
+        trail.time = trailTime;
+        trail.startWidth = trailWidth;
+        trail.endWidth = 0f;
+        trail.colorGradient = trailColorGradient;
+
+        // Make trail glow (assign emissive material in editor for best results)
+        trail.material = new Material(Shader.Find("Sprites/Default"));
+
+        // Initial delta-v calculation
+        UpdateDeltaV();
+    }
+
+    void Update()
+    {
+        HandleInput();
+        UpdateTelemetry();
+    }
+
+    // ─── Input Handling ───────────────────────────────────────────────────────
+
+    void HandleInput()
+    {
+        if (fuelMass <= 0f)
+        {
+            engineFiring = false;
+            return;
+        }
+
+        Vector3 burnDirection = Vector3.zero;
+        engineFiring = false;
+
+        // Prograde burn (most important maneuver — raises orbit)
+        if (Input.GetKey(progradeKey) && gravBody.velocity.magnitude > 0.001f)
+        {
+            burnDirection = gravBody.velocity.normalized;
+            engineFiring = true;
+        }
+        // Manual directional burns
+        else if (Input.GetKey(thrustForwardKey))  { burnDirection = transform.up;      engineFiring = true; }
+        else if (Input.GetKey(thrustBackKey))     { burnDirection = -transform.up;     engineFiring = true; }
+        else if (Input.GetKey(thrustLeftKey))     { burnDirection = -transform.right;  engineFiring = true; }
+        else if (Input.GetKey(thrustRightKey))    { burnDirection = transform.right;   engineFiring = true; }
+
+        if (engineFiring && burnDirection != Vector3.zero)
+        {
+            ApplyBurn(burnDirection);
+        }
+    }
+
+    /// <summary>
+    /// Applies a thrust burn using the Tsiolkovsky Rocket Equation.
+    /// This is the real physics — mass decreases as fuel burns.
+    /// Δv = Isp × g₀ × ln(m₀/mf)
+    /// </summary>
+    void ApplyBurn(Vector3 direction)
+    {
+        float totalMass = dryMass + fuelMass;
+        float acceleration = thrustForce / totalMass; // F = ma
+
+        // Fuel consumption rate (based on thrust and Isp)
+        float fuelBurnRate = thrustForce / (specificImpulse * 9.81f);
+        float fuelUsed = fuelBurnRate * Time.deltaTime * OrbitalPhysicsEngine.Instance.timeScale;
+
+        fuelMass = Mathf.Max(0f, fuelMass - fuelUsed);
+        gravBody.velocity += direction * acceleration * Time.deltaTime;
+
+        UpdateDeltaV();
+    }
+
+    // ─── Telemetry ────────────────────────────────────────────────────────────
+
+    void UpdateTelemetry()
+    {
+        // Find closest body for altitude calculation
+        referenceBody = OrbitalPhysicsEngine.Instance?.GetDominantBody(transform.position);
+
+        if (referenceBody != null)
+        {
+            float distanceFromCenter = Vector3.Distance(transform.position, referenceBody.transform.position);
+            currentAltitude = (distanceFromCenter - referenceBody.radius) * 0.001f; // Convert to km
+            currentSpeed = gravBody.velocity.magnitude;
+
+            // Calculate orbital elements relative to dominant body
+            currentOrbit = OrbitalPhysicsEngine.Instance.CalculateOrbitalElements(gravBody, referenceBody);
+        }
+    }
+
+    void UpdateDeltaV()
+    {
+        // Tsiolkovsky Rocket Equation: Δv = Isp × g₀ × ln(m₀/mf)
+        if (dryMass > 0 && fuelMass > 0)
+        {
+            float massRatio = (dryMass + fuelMass) / dryMass;
+            remainingDeltaV = specificImpulse * 9.81f * Mathf.Log(massRatio);
+        }
+        else
+        {
+            remainingDeltaV = 0f;
+        }
+    }
+
+    // ─── Public API ───────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Call this to set up an initial circular orbit at a given altitude.
+    /// Great for letting the player start already in orbit.
+    /// </summary>
+    public void SetCircularOrbit(GravitationalBody around, float altitudeKm)
+    {
+        float orbitalRadius = (around.radius + altitudeKm) * 1000f;
+        float orbitalSpeed = around.GetCircularOrbitSpeed(altitudeKm);
+
+        // Place spacecraft and give it the right velocity for a circular orbit
+        transform.position = around.transform.position + new Vector3(orbitalRadius, 0, 0);
+        gravBody.velocity = new Vector3(0, 0, orbitalSpeed); // Perpendicular = circular orbit
+    }
+}
