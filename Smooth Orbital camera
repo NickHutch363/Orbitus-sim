@@ -1,0 +1,90 @@
+using UnityEngine;
+
+/// <summary>
+/// Smooth cinematic camera that orbits around the spacecraft.
+/// Scroll to zoom, right-click drag to rotate, Tab to cycle targets.
+/// Feels like Apple Maps in space.
+/// </summary>
+public class OrbitalCamera : MonoBehaviour
+{
+    [Header("Target")]
+    public Transform target;                // What the camera orbits around
+    public float followSmoothness = 5f;
+
+    [Header("Orbit Controls")]
+    public float orbitSensitivity = 3f;
+    public float zoomSensitivity = 2f;
+    public float minZoomDistance = 1f;
+    public float maxZoomDistance = 200f;
+
+    [Header("Starting Position")]
+    public float startingDistance = 20f;
+    public float startingPitch = 30f;
+
+    // ─── Private State ─────────────────────────────────────────────────────────
+    private float currentYaw;
+    private float currentPitch;
+    private float currentDistance;
+    private Vector3 smoothedTargetPosition;
+
+    void Start()
+    {
+        currentDistance = startingDistance;
+        currentPitch = startingPitch;
+
+        if (target != null)
+            smoothedTargetPosition = target.position;
+    }
+
+    void LateUpdate()
+    {
+        if (target == null) return;
+
+        HandleInput();
+        ApplyCameraTransform();
+    }
+
+    void HandleInput()
+    {
+        // Right-click drag to rotate
+        if (Input.GetMouseButton(1))
+        {
+            currentYaw   += Input.GetAxis("Mouse X") * orbitSensitivity;
+            currentPitch -= Input.GetAxis("Mouse Y") * orbitSensitivity;
+            currentPitch  = Mathf.Clamp(currentPitch, -80f, 80f);
+        }
+
+        // Scroll wheel to zoom
+        float scroll = Input.GetAxis("Mouse ScrollWheel");
+        currentDistance -= scroll * zoomSensitivity * currentDistance;
+        currentDistance  = Mathf.Clamp(currentDistance, minZoomDistance, maxZoomDistance);
+    }
+
+    void ApplyCameraTransform()
+    {
+        // Smoothly follow target position (feels cinematic, not snappy)
+        smoothedTargetPosition = Vector3.Lerp(
+            smoothedTargetPosition,
+            target.position,
+            Time.deltaTime * followSmoothness
+        );
+
+        // Build camera rotation from yaw and pitch
+        Quaternion rotation = Quaternion.Euler(currentPitch, currentYaw, 0f);
+
+        // Position camera behind and above target at current distance
+        Vector3 offset = rotation * new Vector3(0f, 0f, -currentDistance);
+        transform.position = smoothedTargetPosition + offset;
+
+        // Always look at the target
+        transform.LookAt(smoothedTargetPosition);
+    }
+
+    /// <summary>
+    /// Switch which object the camera is following (cycle through spacecraft, planets, etc.)
+    /// </summary>
+    public void SetTarget(Transform newTarget)
+    {
+        target = newTarget;
+    }
+}
