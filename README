@@ -1,0 +1,103 @@
+# 🚀 ORBITUS — Orbital Mechanics Simulation
+
+A real-time, physically accurate orbital mechanics sandbox built in Unity.  
+Watch spacecraft obey the same laws of physics used by real mission planners.
+
+![Unity](https://img.shields.io/badge/Engine-Unity%206-black?logo=unity)
+![License](https://img.shields.io/badge/License-MIT-blue)
+![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20iOS-lightgrey)
+
+---
+
+## ✨ Features
+
+- **N-body gravitational simulation** — every body pulls on every other body
+- **Real orbital mechanics** — apoapsis, periapsis, eccentricity, Kepler's laws
+- **Tsiolkovsky Rocket Equation** — fuel mass decreases realistically as you burn
+- **Mission Control HUD** — live telemetry readouts just like a real mission
+- **Cinematic orbital camera** — smooth follow-cam with zoom and rotation
+- **Adjustable time scale** — watch orbits at 1x to 10,000x speed
+
+---
+
+## 🏗️ Architecture
+
+```
+Assets/Scripts/
+├── Physics/
+│   ├── OrbitalPhysicsEngine.cs    ← Core N-body simulation (Velocity Verlet)
+│   ├── GravitationalBody.cs       ← Attach to planets, moons, spacecraft
+│   └── SpacecraftController.cs    ← Engine burns, fuel, rocket equation
+├── UI/
+│   └── MissionControlHUD.cs       ← Live telemetry display
+└── Camera/
+    └── OrbitalCamera.cs           ← Smooth cinematic follow-cam
+```
+
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
+- Unity 6 (URP template)
+- Visual Studio 2022 with Unity workload
+
+### Setup
+1. Clone this repository
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/orbitus-simulation.git
+   ```
+2. Open Unity Hub → Add Project → select the cloned folder
+3. Open the `MainScene` in `Assets/Scenes/`
+4. Press Play
+
+### First Scene Setup (manual)
+1. Create an empty GameObject → name it `Universe` → add `OrbitalPhysicsEngine`
+2. Create a sphere → name it `Earth` → add `GravitationalBody` (set mass to `5.972e24`, mark as stationary)
+3. Create a smaller sphere → name it `Spacecraft` → add `GravitationalBody` + `SpacecraftController` + `TrailRenderer`
+4. Create an empty GameObject → add `OrbitalCamera` → assign spacecraft as target
+5. Press Play — use `SetCircularOrbit()` to put the spacecraft in orbit
+
+---
+
+## 🎮 Controls
+
+| Key | Action |
+|-----|--------|
+| `Space` | Prograde burn (raises orbit) |
+| `W/S/A/D` | Directional thrust |
+| `,` / `.` | Decrease / increase time scale |
+| `P` | Pause simulation |
+| `Right-click drag` | Rotate camera |
+| `Scroll wheel` | Zoom |
+
+---
+
+## 🔭 Physics Accuracy
+
+This simulation implements:
+- **Newton's Law of Universal Gravitation**: `F = G·M·m / r²`
+- **Velocity Verlet integration** for stable numerical orbits
+- **Tsiolkovsky Rocket Equation**: `Δv = Isp · g₀ · ln(m₀/mf)`
+- **Kepler's Third Law** for period calculation: `T = 2π√(a³/μ)`
+- **Vis-viva equation** for orbital speed: `v = √(G·M/r)`
+
+---
+
+## 🗺️ Roadmap
+
+- [ ] Phase 1 — Core physics & single orbit *(current)*
+- [ ] Phase 2 — Hohmann transfer missions & delta-v planner
+- [ ] Phase 3 — Multi-body (Earth-Moon system)
+- [ ] Phase 4 — Falcon 9 boostback & propulsive landing simulation
+- [ ] Phase 5 — Solar system scale with all 8 planets
+
+---
+
+## 📄 License
+
+MIT — free to use, modify, and distribute.
+
+---
+
+*Built with curiosity and a love of orbital mechanics.*
